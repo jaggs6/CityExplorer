@@ -21,9 +21,11 @@ import com.android.volley.RequestQueue;
 import com.android.volley.VolleyError;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.type.SimpleType;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.GoogleMapOptions;
 import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.model.LatLng;
 import com.spothero.volley.JacksonNetwork;
 import com.spothero.volley.JacksonRequest;
 import com.spothero.volley.JacksonRequestListener;
@@ -91,6 +93,10 @@ public class MainActivity extends Activity implements OnNavigationListener {
 					public void onMyLocationChange(Location location) {
 						if (currentCity.isEmpty()) {
 							(new GetAddressTask(getApplicationContext())).execute(location);
+							LatLng myLocation = new LatLng(location.getLatitude(),
+									location.getLongitude());
+							mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation,
+									15.0f));
 						}
 					}
 				});
@@ -98,7 +104,7 @@ public class MainActivity extends Activity implements OnNavigationListener {
 		}
 	}
 
-	private void getPOI() {
+	private void getPOI(String s) {
 
 	}
 
@@ -130,13 +136,15 @@ public class MainActivity extends Activity implements OnNavigationListener {
 		List<String> categories = new ArrayList<String>(response.categoriesContent.categoriesArray
 				.length);
 		for (Category category : response.categoriesContent.categoriesArray) {
-			categories.add(category.category);
+			categories.add(category.category.replace("_", " "));
 		}
 		categoriesArray = new String[categories.size()];
 		categoriesArray = categories.toArray(categoriesArray);
 	}
 
 	private void setCategoriesIntoActionBar() {
+		actionBar.setDisplayShowTitleEnabled(false);
+		actionBar.setNavigationMode(ActionBar.NAVIGATION_MODE_LIST);
 		actionBar.setListNavigationCallbacks(
 				new ArrayAdapter<String>(
 						actionBar.getThemedContext(),
@@ -149,8 +157,6 @@ public class MainActivity extends Activity implements OnNavigationListener {
 
 	private void setupActionBar() {
 		actionBar = getActionBar();
-		actionBar.setDisplayShowTitleEnabled(false);
-		actionBar.setNavigationMode(ActionBar.NAVIGATION_MODE_LIST);
 	}
 
 	@Override
@@ -177,7 +183,7 @@ public class MainActivity extends Activity implements OnNavigationListener {
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 
-		getMenuInflater().inflate(R.menu.main, menu);
+		//		getMenuInflater().inflate(R.menu.main, menu);
 		return true;
 	}
 
@@ -194,7 +200,7 @@ public class MainActivity extends Activity implements OnNavigationListener {
 	public boolean onNavigationItemSelected(int position, long id) {
 		// When the given dropdown item is selected, show its contents in the
 		// container view.
-		getPOI();
+		getPOI(categoriesArray[position]);
 		return true;
 	}
 
