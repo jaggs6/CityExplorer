@@ -12,8 +12,11 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
+import co.jagdeep.cityexplorer.model.BlockLinks;
+import co.jagdeep.cityexplorer.model.Blocks;
 import co.jagdeep.cityexplorer.model.Categories;
 import co.jagdeep.cityexplorer.model.Category;
 import com.android.volley.Request;
@@ -26,6 +29,7 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.GoogleMapOptions;
 import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.spothero.volley.JacksonNetwork;
 import com.spothero.volley.JacksonRequest;
 import com.spothero.volley.JacksonRequestListener;
@@ -43,6 +47,8 @@ public class MainActivity extends Activity implements OnNavigationListener {
 
 	private static final String STATE_SELECTED_NAVIGATION_ITEM = "selected_navigation_item";
 	private static final String TAG = "CityExplorerLog";
+	//	private static final String API_KEY = "apikey=8rNAM8hxtPgpJaWCPofUNCWJ3VU2STdS";
+	private static final String API_KEY = "apikey=6400efb9c1d7e64df6407a6d58bd2f00";
 	private GoogleMap mMap;
 	MapFragment mMapFragment;
 	private String currentCity = "";
@@ -54,6 +60,8 @@ public class MainActivity extends Activity implements OnNavigationListener {
 	private ActionBar actionBar;
 	private MainActivity thisObj;
 	private String[] categoriesArray;
+	private BlockLinks[] blocksLinksArray;
+	private View progressBar;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -62,6 +70,9 @@ public class MainActivity extends Activity implements OnNavigationListener {
 		mRequestQueue = JacksonNetwork.newRequestQueue(this);
 
 		setContentView(R.layout.activity_main);
+
+		progressBar = findViewById(R.id.progress);
+
 		if (mMapFragment == null) {
 
 			GoogleMapOptions options = new GoogleMapOptions();
@@ -104,19 +115,78 @@ public class MainActivity extends Activity implements OnNavigationListener {
 		}
 	}
 
-	private void getPOI(String s) {
+	private void getPOI(String category) {
+		final String url = "https://api.pearson.com/eyewitness/" + currentCity + "/block.json?category=" + category +
+				"&tag=tg_info&" +
+				API_KEY;
+		Log.i(TAG, url);
 
+		mRequestQueue.add(new JacksonRequest<Blocks>(Request.Method.GET,
+						url,
+						new JacksonRequestListener<Blocks>() {
+							@Override
+							public void onResponse(Blocks response, int statusCode, VolleyError error) {
+								if (response != null) {
+									mMap.clear();
+									responseToBlocksArray(response);
+									hideProgress();
+								} else {
+									Log.e(TAG, "An error occurred while parsing the data! Stack trace follows:");
+									error.printStackTrace();
+								}
+							}
+
+							@Override
+							public JavaType getReturnType() {
+								return SimpleType.construct(Blocks.class);
+							}
+						}
+				)
+		);
+
+	}
+
+	private void responseToBlocksArray(Blocks response) {
+		blocksLinksArray = response.blocksList.blockLinks;
+		for (BlockLinks blockLink : response.blocksList.blockLinks) {
+			if (blockLink.latitude != null && blockLink.longitude != null && blockLink.title != null) {
+				mMap.addMarker(new MarkerOptions()
+								.position(new LatLng(Double.parseDouble(blockLink.latitude),
+										Double.parseDouble(blockLink.longitude)))
+								.title(blockLink.title)
+				);
+			}
+		}
+	}
+
+	void showProgress() {
+		progressBar.setVisibility(View.VISIBLE);
+	}
+
+	void hideProgress() {
+		progressBar.setVisibility(View.GONE);
+	}
+
+	private void responseToCategoriesArray(Categories response) {
+		List<String> categories = new ArrayList<String>(response.categoriesContent.categoriesArray
+				.length);
+		for (Category category : response.categoriesContent.categoriesArray) {
+			categories.add(category.category.replace("_", " "));
+		}
+		categoriesArray = new String[categories.size()];
+		categoriesArray = categories.toArray(categoriesArray);
 	}
 
 	private void getCategories() {
 		mRequestQueue.add(new JacksonRequest<Categories>(Request.Method.GET,
-						"https://api.pearson.com/eyewitness/" + currentCity + "/categories.json",
+						"https://api.pearson.com/eyewitness/" + currentCity + "/categories.json" + "?" + API_KEY,
 						new JacksonRequestListener<Categories>() {
 							@Override
 							public void onResponse(Categories response, int statusCode, VolleyError error) {
 								if (response != null) {
 									responseToCategoriesArray(response);
 									setCategoriesIntoActionBar();
+									hideProgress();
 								} else {
 									Log.e(TAG, "An error occurred while parsing the data! Stack trace follows:");
 									error.printStackTrace();
@@ -130,16 +200,6 @@ public class MainActivity extends Activity implements OnNavigationListener {
 						}
 				)
 		);
-	}
-
-	private void responseToCategoriesArray(Categories response) {
-		List<String> categories = new ArrayList<String>(response.categoriesContent.categoriesArray
-				.length);
-		for (Category category : response.categoriesContent.categoriesArray) {
-			categories.add(category.category.replace("_", " "));
-		}
-		categoriesArray = new String[categories.size()];
-		categoriesArray = categories.toArray(categoriesArray);
 	}
 
 	private void setCategoriesIntoActionBar() {
@@ -200,7 +260,9 @@ public class MainActivity extends Activity implements OnNavigationListener {
 	public boolean onNavigationItemSelected(int position, long id) {
 		// When the given dropdown item is selected, show its contents in the
 		// container view.
-		getPOI(categoriesArray[position]);
+		Log.i(TAG, Integer.toString(position));
+		showProgress();
+		getPOI(categoriesArray[position].replace(" ", "_"));
 		return true;
 	}
 
@@ -271,6 +333,7 @@ public class MainActivity extends Activity implements OnNavigationListener {
 			if (citiesList.contains(currentCity)) {
 				Toast.makeText(getApplicationContext(), address + " is supported",
 						Toast.LENGTH_LONG).show();
+				showProgress();
 				getCategories();
 			} else {
 				Toast.makeText(getApplicationContext(), "Sorry " + address + " is not supported yet",
