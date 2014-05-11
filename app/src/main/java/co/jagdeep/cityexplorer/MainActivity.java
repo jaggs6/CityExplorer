@@ -4,11 +4,16 @@ import android.app.ActionBar;
 import android.app.Activity;
 import android.app.FragmentTransaction;
 import android.content.Context;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.view.Menu;
@@ -55,13 +60,16 @@ import static android.app.ActionBar.OnNavigationListener;
 import static com.gn.intelligentheadset.IHSDevice.IHSDeviceListener;
 
 
-public class MainActivity extends Activity implements OnNavigationListener, GoogleMap.OnMarkerClickListener {
+public class MainActivity extends Activity implements OnNavigationListener, GoogleMap.OnMarkerClickListener,
+		SensorEventListener {
 
 	private static final String STATE_SELECTED_NAVIGATION_ITEM = "selected_navigation_item";
 	private static final String TAG = "CityExplorerLog";
 	//	private static final String API_KEY = "apikey=8rNAM8hxtPgpJaWCPofUNCWJ3VU2STdS";
 	private static final String API_KEY = "apikey=6400efb9c1d7e64df6407a6d58bd2f00";
 	private static final String HEADSET_KEY = "WvZlDar7pdT5sqFenYhnP/3RxO3b2GUeZrjz1KdKPOM=";
+	public static final double FAKE_LATITUDE = 40.7639;
+	public static final double FAKE_LONGITUDE = -73.9725;
 	private GoogleMap mMap;
 	MapFragment mMapFragment;
 	private String currentCity = "";
@@ -74,12 +82,13 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	private ActionBar actionBar;
 	private MainActivity thisObj;
 	private String[] categoriesArray;
-	private BlockLinks[] blocksLinksArray;
 	private View progressBar;
 	private TextToSpeech tts;
 	private IHS mIHS;
 	private IHSDevice mMyDevice = null;
 	private Location myCurrentLocation;
+	private SensorManager mSensorManager;
+
 
 	private IHSSensorPack.IHSSensorsListener mSensorInfoListener;
 	private IHSListener mIHSListener = new IHSListener() {
@@ -89,19 +98,18 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 			if (apiStatus == APIStatus.READY) {
 				// We want it to stay alive until explicitly stopped (in onBackPressed)
 				mIHS.connectHeadset(); // May already be connected, but that doesn't matter
-
 			}
-			//			Toast.makeText(thisObj,"")
 		}
 
 		@Override
 		public void onIHSDeviceSelectionRequired(List<IHSDeviceDescriptor> list) {
 			Toast.makeText(thisObj, "Please Select headset", Toast.LENGTH_SHORT).show();
-			//			for()
+			mSensorManager = (SensorManager) thisObj.getSystemService(SENSOR_SERVICE);
 		}
 
 		@Override
 		public void onIHSDeviceSelected(IHSDevice device) {
+			mSensorManager = null;
 			mMyDevice = device;
 			mMyDevice.getSensorPack().addListener(mSensorInfoListener);
 			mMyDevice.addListener(mDeviceInfoListener);
@@ -145,23 +153,25 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	};
 	private TextView tvCheading;
 	private Marker myMarker;
-	private List<BlockLinks> nearbyBlockLinks;
 	private TextView txtBearing;
+	private Talk[] talkArray;
+	private List<Talk> nearbyTalkList;
+	private Location fakeLocation;
+	private Handler handler;
 
-	List<BlockLinks> getNearbyMarkers(Location location) {
-		List<BlockLinks> blockLinks = new ArrayList<BlockLinks>();
-		if (blocksLinksArray != null) {
-			for (BlockLinks blockLink : blocksLinksArray) {
-				Location newLocation = new Location("");
-				newLocation.setLatitude(Double.parseDouble(blockLink.latitude));
-				newLocation.setLongitude(Double.parseDouble(blockLink.longitude));
-				int distance = Talk.calculateDistance(location, newLocation);
-				if (distance < radius) {
-					blockLinks.add(blockLink);
+	List<Talk> getNearbyMarkers(Location location) {
+		List<Talk> talkList = new ArrayList<Talk>();
+		if (talkArray != null) {
+			for (Talk talk : talkArray) {
+				if (!talk.hasSpoken) {
+					int distance = Talk.calculateDistance(location, talk.place.getPosition());
+					if (distance < radius) {
+						talkList.add(talk);
+					}
 				}
 			}
 		}
-		return blockLinks;
+		return talkList;
 	}
 
 	@Override
@@ -175,6 +185,12 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		tvCheading = (TextView) findViewById(R.id.textCompass);
 		txtBearing = (TextView) findViewById(R.id.textBearing);
 
+		fakeLocation = new Location("");
+		fakeLocation.setLatitude(FAKE_LATITUDE);
+		fakeLocation.setLongitude(FAKE_LONGITUDE);
+
+		handler = new Handler();
+
 		mIHS = new IHS(this, HEADSET_KEY, mIHSListener);
 
 		progressBar = findViewById(R.id.progress);
@@ -182,28 +198,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		mSensorInfoListener = new IHSSensorPack.IHSSensorsListener() {
 			@Override
 			public void compassHeadingChanged(IHSSensorPack ihsSensorPack, float v) {
-
-				if (myMarker != null) {
-					myMarker.setRotation(v + 90);
-					v = (Math.round(v) / 10);
-					tvCheading.setText(String.format("%.1f∞", v));
-					if (myCurrentLocation != null) {
-						for (BlockLinks blockLinks : nearbyBlockLinks) {
-							Location location = new Location("");
-							location.setLatitude(Double.parseDouble(blockLinks.latitude));
-							location.setLongitude(Double.parseDouble(blockLinks.longitude));
-
-							final int round = Math.round(location.bearingTo(myCurrentLocation)) / 10 + 9;
-							txtBearing.setText(Integer.toString(round));
-							if (round == v) {
-								Talk talkObj = new Talk(tts, makeBlock(blockLinks.title, location.getLatitude(),
-										location.getLongitude()));
-								talkObj.playSound();
-							}
-						}
-					}
-				}
-
+				checkCompass(v);
 			}
 		};
 
@@ -236,6 +231,26 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		setupActionBar();
 	}
 
+	private void checkCompass(float v) {
+		if (myMarker != null) {
+			myMarker.setRotation(v + 90);
+			v = (Math.round(v) / 10);
+			tvCheading.setText(String.format("%.1f∞", v));
+			if (myCurrentLocation != null) {
+				if (nearbyTalkList != null) {
+					for (Talk talk : nearbyTalkList) {
+						final int round = Math.round(talk.place.getPosition().bearingTo(myCurrentLocation)) / 10 + 9;
+						txtBearing.setText(Integer.toString(round));
+						if (round == v) {
+							talk.sayTitleAndDistance(myCurrentLocation);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
 	private void setUpMapIfNeeded() {
 		// Do a null check to confirm that we have not already instantiated the map.
 		if (mMap == null) {
@@ -247,6 +262,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 				mMap.setOnMyLocationChangeListener(new GoogleMap.OnMyLocationChangeListener() {
 					@Override
 					public void onMyLocationChange(Location location) {
+						location.set(fakeLocation);
 						myCurrentLocation = location;
 						LatLng myLocation = new LatLng(location.getLatitude(),
 								location.getLongitude());
@@ -255,20 +271,20 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 							mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation,
 									15.0f));
 						}
-						if (myMarker != null) {
-							myMarker.remove();
+						if (myMarker == null) {
+							myMarker = mMap.addMarker(getMyMarkerOptions(myLocation));
 						}
-						myMarker = mMap.addMarker(new MarkerOptions()
-								.position(new LatLng(myLocation.latitude, myLocation.longitude))
-								.icon(BitmapDescriptorFactory.fromResource(R.drawable.cone2)));
-
-						if (location != null) {
-							nearbyBlockLinks = getNearbyMarkers(location);
-						}
+						nearbyTalkList = getNearbyMarkers(myCurrentLocation);
 					}
 				});
 			}
 		}
+	}
+
+	private MarkerOptions getMyMarkerOptions(LatLng myLocation) {
+		return new MarkerOptions()
+				.position(new LatLng(myLocation.latitude, myLocation.longitude))
+				.icon(BitmapDescriptorFactory.fromResource(R.drawable.cone2));
 	}
 
 	private void getPOI(String category) {
@@ -284,6 +300,9 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 							public void onResponse(Blocks response, int statusCode, VolleyError error) {
 								if (response != null) {
 									mMap.clear();
+									if (myMarker != null) {
+										myMarker = mMap.addMarker(getMyMarkerOptions(myMarker.getPosition()));
+									}
 									responseToBlocksArray(response);
 									hideProgress();
 								} else {
@@ -303,7 +322,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	}
 
 	private void responseToBlocksArray(Blocks response) {
-		List<BlockLinks> blockLinksList = new ArrayList<BlockLinks>();
+		List<Talk> talkList = new ArrayList<Talk>();
 		if (response.blocksList.blockLinks.length > 0) {
 			for (BlockLinks blockLink : response.blocksList.blockLinks) {
 				if (blockLink.latitude != null && blockLink.longitude != null && blockLink.title != null) {
@@ -312,7 +331,9 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 					location.setLatitude(Double.parseDouble(blockLink.latitude));
 					location.setLongitude(Double.parseDouble(blockLink.longitude));
 
-					blockLinksList.add(blockLink);
+					talkList.add(new Talk(tts, makeBlock(blockLink.title, location.getLatitude(),
+							location.getLongitude()), handler
+					));
 
 					mMap.addMarker(new MarkerOptions()
 									.position(new LatLng(Double.parseDouble(blockLink.latitude),
@@ -322,7 +343,8 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 					);
 				}
 			}
-			blocksLinksArray = blockLinksList.toArray(new BlockLinks[blockLinksList.size()]);
+			talkArray = talkList.toArray(new Talk[talkList.size()]);
+			nearbyTalkList = getNearbyMarkers(myCurrentLocation);
 			mMap.setOnMarkerClickListener(this);
 		}
 	}
@@ -394,7 +416,13 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		if (mMyDevice != null) {
 			mMyDevice.addListener(mDeviceInfoListener);
 			mMyDevice.getSensorPack().addListener(mSensorInfoListener);
+		} else {
+			if (mSensorManager != null) {
+				mSensorManager.registerListener(this, mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION),
+						SensorManager.SENSOR_DELAY_GAME);
+			}
 		}
+
 	}
 
 	@Override
@@ -457,11 +485,13 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 
 	@Override
 	public boolean onMarkerClick(Marker marker) {
-		final Place testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
-				marker.getPosition().longitude);
-		Talk talkObj = new Talk(tts, testData);
-		talkObj.sayTitle();
-		talkObj.sayDistance(mMap.getMyLocation());
+		if (marker != myMarker) {
+			final Place testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
+					marker.getPosition().longitude);
+			Talk talkObj = new Talk(tts, testData, handler);
+			talkObj.sayTitleAndDistance(myCurrentLocation);
+			talkObj.sayDistance(mMap.getMyLocation());
+		}
 		return false;
 	}
 
@@ -477,7 +507,23 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		if (mMyDevice != null) {
 			mMyDevice.removeListener(mDeviceInfoListener);
 			mMyDevice.getSensorPack().removeListener(mSensorInfoListener);
+		} else {
+			if (mSensorManager != null) {
+				mSensorManager.unregisterListener(this);
+			}
 		}
+
+	}
+
+	@Override
+	public void onSensorChanged(SensorEvent sensorEvent) {
+		float degree = Math.round(sensorEvent.values[0]);
+		checkCompass(degree);
+	}
+
+	@Override
+	public void onAccuracyChanged(Sensor sensor, int i) {
+
 	}
 
 	private class GetAddressTask extends
@@ -543,15 +589,17 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		@Override
 		protected void onPostExecute(String address) {
 			super.onPostExecute(address);
-			currentCity = address.replace(" ", "").toLowerCase().trim();
-			if (citiesList.contains(currentCity)) {
-				Toast.makeText(getApplicationContext(), address + " is supported",
-						Toast.LENGTH_LONG).show();
-				showProgress();
-				getCategories();
-			} else {
-				Toast.makeText(getApplicationContext(), "Sorry " + address + " is not supported yet",
-						Toast.LENGTH_LONG).show();
+			if (address != null) {
+				currentCity = address.replace(" ", "").toLowerCase().trim();
+				if (citiesList.contains(currentCity)) {
+					Toast.makeText(getApplicationContext(), address + " is supported",
+							Toast.LENGTH_LONG).show();
+					showProgress();
+					getCategories();
+				} else {
+					Toast.makeText(getApplicationContext(), "Sorry " + address + " is not supported yet",
+							Toast.LENGTH_LONG).show();
+				}
 			}
 		}
 	}
