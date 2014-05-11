@@ -15,6 +15,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.TextView;
 import android.widget.Toast;
 import co.jagdeep.cityexplorer.model.BlockLinks;
 import co.jagdeep.cityexplorer.model.Blocks;
@@ -27,10 +28,16 @@ import com.android.volley.RequestQueue;
 import com.android.volley.VolleyError;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.type.SimpleType;
+import com.gn.intelligentheadset.IHS;
+import com.gn.intelligentheadset.IHSDevice;
+import com.gn.intelligentheadset.IHSDeviceDescriptor;
+import com.gn.intelligentheadset.IHSListener;
+import com.gn.intelligentheadset.subsys.IHSSensorPack;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.GoogleMapOptions;
 import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -39,9 +46,13 @@ import com.spothero.volley.JacksonRequest;
 import com.spothero.volley.JacksonRequestListener;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 
 import static android.app.ActionBar.OnNavigationListener;
+import static com.gn.intelligentheadset.IHSDevice.IHSDeviceListener;
 
 
 public class MainActivity extends Activity implements OnNavigationListener, GoogleMap.OnMarkerClickListener {
@@ -50,10 +61,12 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	private static final String TAG = "CityExplorerLog";
 	//	private static final String API_KEY = "apikey=8rNAM8hxtPgpJaWCPofUNCWJ3VU2STdS";
 	private static final String API_KEY = "apikey=6400efb9c1d7e64df6407a6d58bd2f00";
+	private static final String HEADSET_KEY = "WvZlDar7pdT5sqFenYhnP/3RxO3b2GUeZrjz1KdKPOM=";
 	private GoogleMap mMap;
 	MapFragment mMapFragment;
 	private String currentCity = "";
 	RequestQueue mRequestQueue;
+	int radius = 1000;
 	String cities[] = {
 			"london", "barcelona", "berlin", "newyork", "paris", "prague", "rome", "venice", "washington"
 	};
@@ -63,8 +76,93 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	private String[] categoriesArray;
 	private BlockLinks[] blocksLinksArray;
 	private View progressBar;
-	private HashMap<String, String> blockLinksMap;
 	private TextToSpeech tts;
+	private IHS mIHS;
+	private IHSDevice mMyDevice = null;
+	private Location myCurrentLocation;
+
+	private IHSSensorPack.IHSSensorsListener mSensorInfoListener;
+	private IHSListener mIHSListener = new IHSListener() {
+
+		@Override
+		public void onAPIstatus(APIStatus apiStatus) {
+			if (apiStatus == APIStatus.READY) {
+				// We want it to stay alive until explicitly stopped (in onBackPressed)
+				mIHS.connectHeadset(); // May already be connected, but that doesn't matter
+
+			}
+			//			Toast.makeText(thisObj,"")
+		}
+
+		@Override
+		public void onIHSDeviceSelectionRequired(List<IHSDeviceDescriptor> list) {
+			Toast.makeText(thisObj, "Please Select headset", Toast.LENGTH_SHORT).show();
+			//			for()
+		}
+
+		@Override
+		public void onIHSDeviceSelected(IHSDevice device) {
+			mMyDevice = device;
+			mMyDevice.getSensorPack().addListener(mSensorInfoListener);
+			mMyDevice.addListener(mDeviceInfoListener);
+		}
+
+	};
+
+	// Listener for device-level events
+	private IHSDeviceListener mDeviceInfoListener = new IHSDevice.IHSDeviceListener() {
+
+		@Override
+		public void connectedStateChanged(IHSDevice device, IHSDevice.IHSDeviceConnectionState connectionState) {
+			super.connectedStateChanged(device, connectionState);
+
+			switch (connectionState) {
+			case IHSDeviceConnectionStateDisconnected:
+				// In this example, we decide that we want automatic reconnection in case of
+				// disconnects.
+				// Other apps may choose differently.
+
+				// Generic (re)connect - beware that this may end up connecting to
+				// a different device!
+				mIHS.connectHeadset();
+				break;
+			default:
+				// No action.
+				break;
+			}
+		}
+
+		@Override
+		public void rssiAvailable(IHSDevice dev, int rssi) {
+		}
+
+		@Override
+		public void staticInfoAvailable(IHSDevice dev) {
+			// As a simple example, get the SW revision of the headset
+		}
+
+		;
+	};
+	private TextView tvCheading;
+	private Marker myMarker;
+	private List<BlockLinks> nearbyBlockLinks;
+	private TextView txtBearing;
+
+	List<BlockLinks> getNearbyMarkers(Location location) {
+		List<BlockLinks> blockLinks = new ArrayList<BlockLinks>();
+		if (blocksLinksArray != null) {
+			for (BlockLinks blockLink : blocksLinksArray) {
+				Location newLocation = new Location("");
+				newLocation.setLatitude(Double.parseDouble(blockLink.latitude));
+				newLocation.setLongitude(Double.parseDouble(blockLink.longitude));
+				int distance = Talk.calculateDistance(location, newLocation);
+				if (distance < radius) {
+					blockLinks.add(blockLink);
+				}
+			}
+		}
+		return blockLinks;
+	}
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -74,7 +172,40 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 
 		setContentView(R.layout.activity_main);
 
+		tvCheading = (TextView) findViewById(R.id.textCompass);
+		txtBearing = (TextView) findViewById(R.id.textBearing);
+
+		mIHS = new IHS(this, HEADSET_KEY, mIHSListener);
+
 		progressBar = findViewById(R.id.progress);
+
+		mSensorInfoListener = new IHSSensorPack.IHSSensorsListener() {
+			@Override
+			public void compassHeadingChanged(IHSSensorPack ihsSensorPack, float v) {
+
+				if (myMarker != null) {
+					myMarker.setRotation(v + 90);
+					v = (Math.round(v) / 10);
+					tvCheading.setText(String.format("%.1f∞", v));
+					if (myCurrentLocation != null) {
+						for (BlockLinks blockLinks : nearbyBlockLinks) {
+							Location location = new Location("");
+							location.setLatitude(Double.parseDouble(blockLinks.latitude));
+							location.setLongitude(Double.parseDouble(blockLinks.longitude));
+
+							final int round = Math.round(location.bearingTo(myCurrentLocation)) / 10;
+							txtBearing.setText(Integer.toString(round));
+							if (round == v) {
+								Talk talkObj = new Talk(tts, makeBlock(blockLinks.title, location.getLatitude(),
+										location.getLongitude()));
+								talkObj.playSound();
+							}
+						}
+					}
+				}
+
+			}
+		};
 
 		tts = new TextToSpeech(getApplicationContext(),
 				new TextToSpeech.OnInitListener() {
@@ -116,12 +247,24 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 				mMap.setOnMyLocationChangeListener(new GoogleMap.OnMyLocationChangeListener() {
 					@Override
 					public void onMyLocationChange(Location location) {
+						myCurrentLocation = location;
+						LatLng myLocation = new LatLng(location.getLatitude(),
+								location.getLongitude());
 						if (currentCity.isEmpty()) {
 							(new GetAddressTask(getApplicationContext())).execute(location);
-							LatLng myLocation = new LatLng(location.getLatitude(),
-									location.getLongitude());
 							mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation,
 									15.0f));
+						}
+						if (myMarker != null) {
+							myMarker.remove();
+						}
+						myMarker = mMap.addMarker(new MarkerOptions()
+								.position(new LatLng(myLocation.latitude, myLocation.longitude))
+								.anchor(0.5f, 0.5f)
+								.icon(BitmapDescriptorFactory.fromResource(R.drawable.map_icon)));
+
+						if (location != null) {
+							nearbyBlockLinks = getNearbyMarkers(location);
 						}
 					}
 				});
@@ -161,6 +304,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	}
 
 	private void responseToBlocksArray(Blocks response) {
+		List<BlockLinks> blockLinksList = new ArrayList<BlockLinks>();
 		if (response.blocksList.blockLinks.length > 0) {
 			for (BlockLinks blockLink : response.blocksList.blockLinks) {
 				if (blockLink.latitude != null && blockLink.longitude != null && blockLink.title != null) {
@@ -169,14 +313,17 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 					location.setLatitude(Double.parseDouble(blockLink.latitude));
 					location.setLongitude(Double.parseDouble(blockLink.longitude));
 
+					blockLinksList.add(blockLink);
+
 					mMap.addMarker(new MarkerOptions()
 									.position(new LatLng(Double.parseDouble(blockLink.latitude),
 											Double.parseDouble(blockLink.longitude)))
 									.title(blockLink.title)
-									.snippet(Talk.calculateDistance(mMap.getMyLocation(),location) + " meters away ")
+									.snippet(Talk.calculateDistance(mMap.getMyLocation(), location) + " meters away ")
 					);
 				}
 			}
+			blocksLinksArray = blockLinksList.toArray(new BlockLinks[blockLinksList.size()]);
 			mMap.setOnMarkerClickListener(this);
 		}
 	}
@@ -245,6 +392,10 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	protected void onResume() {
 		super.onResume();
 		setUpMapIfNeeded();
+		if (mMyDevice != null) {
+			mMyDevice.addListener(mDeviceInfoListener);
+			mMyDevice.getSensorPack().addListener(mSensorInfoListener);
+		}
 	}
 
 	@Override
@@ -309,10 +460,25 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	public boolean onMarkerClick(Marker marker) {
 		final Block testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
 				marker.getPosition().longitude);
-		final Talk talkObj = new Talk(tts, testData);
+		Talk talkObj = new Talk(tts, testData);
 		talkObj.sayTitle();
 		talkObj.sayDistance(mMap.getMyLocation());
 		return false;
+	}
+
+	@Override
+	public void onBackPressed() {
+		mIHS.stopService();
+		super.onBackPressed();
+	}
+
+	@Override
+	protected void onPause() {
+		super.onPause();
+		if (mMyDevice != null) {
+			mMyDevice.removeListener(mDeviceInfoListener);
+			mMyDevice.getSensorPack().removeListener(mSensorInfoListener);
+		}
 	}
 
 	private class GetAddressTask extends
