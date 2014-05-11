@@ -63,8 +63,8 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	//	private static final String API_KEY = "apikey=8rNAM8hxtPgpJaWCPofUNCWJ3VU2STdS";
 	private static final String API_KEY = "apikey=6400efb9c1d7e64df6407a6d58bd2f00";
 	private static final String HEADSET_KEY = "WvZlDar7pdT5sqFenYhnP/3RxO3b2GUeZrjz1KdKPOM=";
-	public static final double FAKE_LATITUDE = 40.7639;
-	public static final double FAKE_LONGITUDE = -73.9725;
+	public static final double FAKE_LATITUDE = 40.7172758;
+	public static final double FAKE_LONGITUDE = -73.9993941;
 	private GoogleMap mMap;
 	MapFragment mMapFragment;
 	private String currentCity = "";
