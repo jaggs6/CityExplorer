@@ -193,7 +193,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 							location.setLatitude(Double.parseDouble(blockLinks.latitude));
 							location.setLongitude(Double.parseDouble(blockLinks.longitude));
 
-							final int round = Math.round(location.bearingTo(myCurrentLocation)) / 10;
+							final int round = Math.round(location.bearingTo(myCurrentLocation)) / 10 + 9;
 							txtBearing.setText(Integer.toString(round));
 							if (round == v) {
 								Talk talkObj = new Talk(tts, makeBlock(blockLinks.title, location.getLatitude(),
@@ -260,8 +260,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 						}
 						myMarker = mMap.addMarker(new MarkerOptions()
 								.position(new LatLng(myLocation.latitude, myLocation.longitude))
-								.anchor(0.5f, 0.5f)
-								.icon(BitmapDescriptorFactory.fromResource(R.drawable.map_icon)));
+								.icon(BitmapDescriptorFactory.fromResource(R.drawable.cone2)));
 
 						if (location != null) {
 							nearbyBlockLinks = getNearbyMarkers(location);
