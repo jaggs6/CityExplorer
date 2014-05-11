@@ -9,6 +9,7 @@ import android.location.Geocoder;
 import android.location.Location;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -19,6 +20,8 @@ import co.jagdeep.cityexplorer.model.BlockLinks;
 import co.jagdeep.cityexplorer.model.Blocks;
 import co.jagdeep.cityexplorer.model.Categories;
 import co.jagdeep.cityexplorer.model.Category;
+import co.jagdeep.cityexplorer.model.talk.Block;
+import co.jagdeep.cityexplorer.model.talk.Talk;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.VolleyError;
@@ -29,21 +32,19 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.GoogleMapOptions;
 import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.spothero.volley.JacksonNetwork;
 import com.spothero.volley.JacksonRequest;
 import com.spothero.volley.JacksonRequestListener;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 
 import static android.app.ActionBar.OnNavigationListener;
 
 
-public class MainActivity extends Activity implements OnNavigationListener {
+public class MainActivity extends Activity implements OnNavigationListener, GoogleMap.OnMarkerClickListener {
 
 	private static final String STATE_SELECTED_NAVIGATION_ITEM = "selected_navigation_item";
 	private static final String TAG = "CityExplorerLog";
@@ -62,6 +63,8 @@ public class MainActivity extends Activity implements OnNavigationListener {
 	private String[] categoriesArray;
 	private BlockLinks[] blocksLinksArray;
 	private View progressBar;
+	private HashMap<String, String> blockLinksMap;
+	private TextToSpeech tts;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -72,6 +75,17 @@ public class MainActivity extends Activity implements OnNavigationListener {
 		setContentView(R.layout.activity_main);
 
 		progressBar = findViewById(R.id.progress);
+
+		tts = new TextToSpeech(getApplicationContext(),
+				new TextToSpeech.OnInitListener() {
+					@Override
+					public void onInit(int status) {
+						if (status != TextToSpeech.ERROR) {
+							tts.setLanguage(Locale.UK);
+						}
+					}
+				}
+		);
 
 		if (mMapFragment == null) {
 
@@ -147,15 +161,23 @@ public class MainActivity extends Activity implements OnNavigationListener {
 	}
 
 	private void responseToBlocksArray(Blocks response) {
-		blocksLinksArray = response.blocksList.blockLinks;
-		for (BlockLinks blockLink : response.blocksList.blockLinks) {
-			if (blockLink.latitude != null && blockLink.longitude != null && blockLink.title != null) {
-				mMap.addMarker(new MarkerOptions()
-								.position(new LatLng(Double.parseDouble(blockLink.latitude),
-										Double.parseDouble(blockLink.longitude)))
-								.title(blockLink.title)
-				);
+		if (response.blocksList.blockLinks.length > 0) {
+			for (BlockLinks blockLink : response.blocksList.blockLinks) {
+				if (blockLink.latitude != null && blockLink.longitude != null && blockLink.title != null) {
+
+					Location location = new Location("");
+					location.setLatitude(Double.parseDouble(blockLink.latitude));
+					location.setLongitude(Double.parseDouble(blockLink.longitude));
+
+					mMap.addMarker(new MarkerOptions()
+									.position(new LatLng(Double.parseDouble(blockLink.latitude),
+											Double.parseDouble(blockLink.longitude)))
+									.title(blockLink.title)
+									.snippet(Talk.calculateDistance(mMap.getMyLocation(),location) + " meters away ")
+					);
+				}
 			}
+			mMap.setOnMarkerClickListener(this);
 		}
 	}
 
@@ -264,6 +286,33 @@ public class MainActivity extends Activity implements OnNavigationListener {
 		showProgress();
 		getPOI(categoriesArray[position].replace(" ", "_"));
 		return true;
+	}
+
+	private Block makeBlock(String title, double lat, double longi) {
+		Block samplePlace = new Block();
+		samplePlace.setTitle(title);
+		Location testLocation = new Location("");
+		testLocation.setLatitude(lat);
+		testLocation.setLongitude(longi);
+		samplePlace.setPosition(testLocation);
+		//		samplePlace.setShortDescription("The Sydney Opera House is a multi-venue performing arts centre in
+		// Sydney");
+		//		samplePlace.setLongDescription("The Opera House’s magnificent harbourside location,
+		// stunning architecture and excellent programme of events make it Sydney’s number one destination. The modern
+		// masterpiece reflects the genius of its architect, Jørn Utzon. In 1999, Utzon agreed to prepare a guide of
+		// design principles for future changes to the building. This was welcome news for all who marvel at his
+		// masterpiece and for the four million visitors to the site each year.");
+		return samplePlace;
+	}
+
+	@Override
+	public boolean onMarkerClick(Marker marker) {
+		final Block testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
+				marker.getPosition().longitude);
+		final Talk talkObj = new Talk(tts, testData);
+		talkObj.sayTitle();
+		talkObj.sayDistance(mMap.getMyLocation());
+		return false;
 	}
 
 	private class GetAddressTask extends
