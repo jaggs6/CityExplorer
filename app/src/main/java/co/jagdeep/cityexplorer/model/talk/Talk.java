@@ -71,14 +71,15 @@ public class Talk {
 	}
 
 	private void speak(String say) {
-		if(!hasSpoken) {
-			tts.speak(say, TextToSpeech.QUEUE_FLUSH, null);
+		if (!hasSpoken) {
+			tts.speak(say, TextToSpeech.QUEUE_ADD, null);
+			hasSpoken = true;
 			handler.postDelayed(new Runnable() {
 				@Override
 				public void run() {
-					hasSpoken = true;
+					hasSpoken = false;
 				}
-			},10000);
+			}, 10000);
 		}
 	}
 

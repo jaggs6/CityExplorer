@@ -4,10 +4,6 @@ import android.app.ActionBar;
 import android.app.Activity;
 import android.app.FragmentTransaction;
 import android.content.Context;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -60,8 +56,7 @@ import static android.app.ActionBar.OnNavigationListener;
 import static com.gn.intelligentheadset.IHSDevice.IHSDeviceListener;
 
 
-public class MainActivity extends Activity implements OnNavigationListener, GoogleMap.OnMarkerClickListener,
-		SensorEventListener {
+public class MainActivity extends Activity implements OnNavigationListener, GoogleMap.OnMarkerClickListener {
 
 	private static final String STATE_SELECTED_NAVIGATION_ITEM = "selected_navigation_item";
 	private static final String TAG = "CityExplorerLog";
@@ -74,7 +69,10 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	MapFragment mMapFragment;
 	private String currentCity = "";
 	RequestQueue mRequestQueue;
-	int radius = 1000;
+	int radius = 500;
+	//	int radius = 40000000;
+	//	private float previousZoomLevel = -1.0f;
+
 	String cities[] = {
 			"london", "barcelona", "berlin", "newyork", "paris", "prague", "rome", "venice", "washington"
 	};
@@ -87,7 +85,6 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	private IHS mIHS;
 	private IHSDevice mMyDevice = null;
 	private Location myCurrentLocation;
-	private SensorManager mSensorManager;
 
 
 	private IHSSensorPack.IHSSensorsListener mSensorInfoListener;
@@ -104,12 +101,10 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		@Override
 		public void onIHSDeviceSelectionRequired(List<IHSDeviceDescriptor> list) {
 			Toast.makeText(thisObj, "Please Select headset", Toast.LENGTH_SHORT).show();
-			mSensorManager = (SensorManager) thisObj.getSystemService(SENSOR_SERVICE);
 		}
 
 		@Override
 		public void onIHSDeviceSelected(IHSDevice device) {
-			mSensorManager = null;
 			mMyDevice = device;
 			mMyDevice.getSensorPack().addListener(mSensorInfoListener);
 			mMyDevice.addListener(mDeviceInfoListener);
@@ -163,11 +158,10 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		List<Talk> talkList = new ArrayList<Talk>();
 		if (talkArray != null) {
 			for (Talk talk : talkArray) {
-				if (!talk.hasSpoken) {
-					int distance = Talk.calculateDistance(location, talk.place.getPosition());
-					if (distance < radius) {
-						talkList.add(talk);
-					}
+				int distance = Talk.calculateDistance(location, talk.place.getPosition());
+				//				float rad = (radius * 664 * previousZoomLevel) / 256;
+				if (distance < radius) {
+					talkList.add(talk);
 				}
 			}
 		}
@@ -199,6 +193,12 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 			@Override
 			public void compassHeadingChanged(IHSSensorPack ihsSensorPack, float v) {
 				checkCompass(v);
+			}
+
+			@Override
+			public void accelerometer3AxisDataChanged(IHSSensorPack ihsSensorPack, IHSSensorPack.IHSAHRS3AxisStruct
+					ihsahrs3AxisStruct) {
+				super.accelerometer3AxisDataChanged(ihsSensorPack, ihsahrs3AxisStruct);
 			}
 		};
 
@@ -242,7 +242,10 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 						final int round = Math.round(talk.place.getPosition().bearingTo(myCurrentLocation)) / 10 + 9;
 						txtBearing.setText(Integer.toString(round));
 						if (round == v) {
-							talk.sayTitleAndDistance(myCurrentLocation);
+							if (!talk.hasSpoken) {
+								talk.sayTitleAndDistance(myCurrentLocation);
+							}
+							talk.place.getMarker().showInfoWindow();
 							break;
 						}
 					}
@@ -259,6 +262,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 			if (mMap != null) {
 				// The Map is verified. It is now safe to manipulate the map.
 				mMap.setMyLocationEnabled(true);
+				//				mMap.setOnCameraChangeListener(this);
 				mMap.setOnMyLocationChangeListener(new GoogleMap.OnMyLocationChangeListener() {
 					@Override
 					public void onMyLocationChange(Location location) {
@@ -331,16 +335,19 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 					location.setLatitude(Double.parseDouble(blockLink.latitude));
 					location.setLongitude(Double.parseDouble(blockLink.longitude));
 
-					talkList.add(new Talk(tts, makeBlock(blockLink.title, location.getLatitude(),
+					Talk talk = new Talk(tts, makeBlock(blockLink.title, location.getLatitude(),
 							location.getLongitude()), handler
-					));
+					);
+					talkList.add(talk);
 
-					mMap.addMarker(new MarkerOptions()
+					Marker marker = mMap.addMarker(new MarkerOptions()
 									.position(new LatLng(Double.parseDouble(blockLink.latitude),
 											Double.parseDouble(blockLink.longitude)))
 									.title(blockLink.title)
-									.snippet(Talk.calculateDistance(mMap.getMyLocation(), location) + " meters away ")
+									.snippet(talk.findDistance(myCurrentLocation))
 					);
+
+					talk.place.setMarker(marker);
 				}
 			}
 			talkArray = talkList.toArray(new Talk[talkList.size()]);
@@ -416,11 +423,6 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		if (mMyDevice != null) {
 			mMyDevice.addListener(mDeviceInfoListener);
 			mMyDevice.getSensorPack().addListener(mSensorInfoListener);
-		} else {
-			if (mSensorManager != null) {
-				mSensorManager.registerListener(this, mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION),
-						SensorManager.SENSOR_DELAY_GAME);
-			}
 		}
 
 	}
@@ -490,7 +492,6 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 					marker.getPosition().longitude);
 			Talk talkObj = new Talk(tts, testData, handler);
 			talkObj.sayTitleAndDistance(myCurrentLocation);
-			talkObj.sayDistance(mMap.getMyLocation());
 		}
 		return false;
 	}
@@ -507,24 +508,20 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		if (mMyDevice != null) {
 			mMyDevice.removeListener(mDeviceInfoListener);
 			mMyDevice.getSensorPack().removeListener(mSensorInfoListener);
-		} else {
-			if (mSensorManager != null) {
-				mSensorManager.unregisterListener(this);
-			}
 		}
 
 	}
 
-	@Override
-	public void onSensorChanged(SensorEvent sensorEvent) {
-		float degree = Math.round(sensorEvent.values[0]);
-		checkCompass(degree);
-	}
-
-	@Override
-	public void onAccuracyChanged(Sensor sensor, int i) {
-
-	}
+	//	@Override
+	//	public void onCameraChange(CameraPosition position) {
+	//		Log.d("Zoom", "Zoom: " + position.zoom);
+	//
+	//		if (previousZoomLevel != position.zoom) {
+	//			//			isZooming = true;
+	//		}
+	//
+	//		previousZoomLevel = position.zoom;
+	//	}
 
 	private class GetAddressTask extends
 			AsyncTask<Location, Void, String> {

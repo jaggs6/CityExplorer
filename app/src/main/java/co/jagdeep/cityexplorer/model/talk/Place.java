@@ -1,6 +1,7 @@
 package co.jagdeep.cityexplorer.model.talk;
 
 import android.location.Location;
+import com.google.android.gms.maps.model.Marker;
 
 /**
  * Created by Alicia on 10/05/14.
@@ -11,7 +12,7 @@ public class Place {
 	private String shortDescription;    // Short description of place
 	private String longDescription;     // Long description of place
 	private Location position;          // The location of the place
-	private String markerID;
+	private Marker marker;
 
 	public String getTitle() {
 		return title;
@@ -45,11 +46,11 @@ public class Place {
 		this.position = position;
 	}
 
-	public String getMarkerID() {
-		return markerID;
+	public Marker getMarker() {
+		return marker;
 	}
 
-	public void setMarkerID(String markerID) {
-		this.markerID = markerID;
+	public void setMarker(Marker marker) {
+		this.marker = marker;
 	}
 }
