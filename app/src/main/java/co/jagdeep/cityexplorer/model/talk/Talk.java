@@ -1,9 +1,8 @@
 package co.jagdeep.cityexplorer.model.talk;
-
-import android.location.Location;
-import android.media.AudioManager;
-import android.media.ToneGenerator;
-import android.speech.tts.TextToSpeech;
+        import android.location.Location;
+        import android.media.AudioManager;
+        import android.media.ToneGenerator;
+        import android.speech.tts.TextToSpeech;
 
 /**
  * Created by Alicia on 10/05/14.
@@ -11,9 +10,9 @@ import android.speech.tts.TextToSpeech;
 public class Talk {
 
     public final TextToSpeech tts;
-    public final Block place;
+    public final Place place;
 
-    public Talk(TextToSpeech tts, Block place){
+    public Talk(TextToSpeech tts, Place place){
         this.tts = tts;
         this.place = place;
     }
@@ -28,8 +27,30 @@ public class Talk {
     }
 
     public void sayDistance(Location currentLocation){
-        int distance = calculateDistance(place.getPosition(), currentLocation);
-        speak(distance + " meters away ");
+
+        String distanceStr = findDistance(currentLocation);
+        speak(distanceStr);
+    }
+
+    public String findDistance(Location currentLocation){
+        String result = "";
+        int distanceMeters = calculateDistance(place.getPosition(), currentLocation);
+        if(distanceMeters<=30){
+            result += distanceMeters+" meters";
+        }
+        else if(distanceMeters>30 && distanceMeters<100){
+            result += (Math.round(distanceMeters / 10d) * 10)+" meters";
+        }
+        else if(distanceMeters>=100 && distanceMeters <1000){
+            result += (Math.round(distanceMeters / 10d))/10+" Kilometers";
+        }
+        else if(distanceMeters>=1000){
+            result += distanceMeters/100+" Kilometers";
+        }
+        else{
+            result += distanceMeters+" meters";
+        }
+        return result+" away";
     }
 
     public void sayLongDescription(){

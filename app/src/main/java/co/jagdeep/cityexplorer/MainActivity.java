@@ -21,7 +21,7 @@ import co.jagdeep.cityexplorer.model.BlockLinks;
 import co.jagdeep.cityexplorer.model.Blocks;
 import co.jagdeep.cityexplorer.model.Categories;
 import co.jagdeep.cityexplorer.model.Category;
-import co.jagdeep.cityexplorer.model.talk.Block;
+import co.jagdeep.cityexplorer.model.talk.Place;
 import co.jagdeep.cityexplorer.model.talk.Talk;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
@@ -439,8 +439,8 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		return true;
 	}
 
-	private Block makeBlock(String title, double lat, double longi) {
-		Block samplePlace = new Block();
+	private Place makeBlock(String title, double lat, double longi) {
+		Place samplePlace = new Place();
 		samplePlace.setTitle(title);
 		Location testLocation = new Location("");
 		testLocation.setLatitude(lat);
@@ -458,7 +458,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 
 	@Override
 	public boolean onMarkerClick(Marker marker) {
-		final Block testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
+		final Place testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
 				marker.getPosition().longitude);
 		Talk talkObj = new Talk(tts, testData);
 		talkObj.sayTitle();

@@ -5,7 +5,7 @@ import android.location.Location;
 /**
  * Created by Alicia on 10/05/14.
  */
-public class Block {
+public class Place {
 
     private String title;               // The place name
     private String shortDescription;    // Short description of place
