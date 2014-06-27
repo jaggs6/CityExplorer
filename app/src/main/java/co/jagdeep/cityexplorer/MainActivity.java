@@ -63,13 +63,13 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	//	private static final String API_KEY = "apikey=8rNAM8hxtPgpJaWCPofUNCWJ3VU2STdS";
 	private static final String API_KEY = "apikey=6400efb9c1d7e64df6407a6d58bd2f00";
 	private static final String HEADSET_KEY = "WvZlDar7pdT5sqFenYhnP/3RxO3b2GUeZrjz1KdKPOM=";
-	public static final double FAKE_LATITUDE = 40.7172758;
-	public static final double FAKE_LONGITUDE = -73.9993941;
+	public static final double FAKE_LATITUDE = 38.8977;
+	public static final double FAKE_LONGITUDE = -77.0366;
 	private GoogleMap mMap;
 	MapFragment mMapFragment;
 	private String currentCity = "";
 	RequestQueue mRequestQueue;
-	int radius = 500;
+	int radius = 1200;
 	//	int radius = 40000000;
 	//	private float previousZoomLevel = -1.0f;
 
@@ -194,12 +194,6 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 			public void compassHeadingChanged(IHSSensorPack ihsSensorPack, float v) {
 				checkCompass(v);
 			}
-
-			@Override
-			public void accelerometer3AxisDataChanged(IHSSensorPack ihsSensorPack, IHSSensorPack.IHSAHRS3AxisStruct
-					ihsahrs3AxisStruct) {
-				super.accelerometer3AxisDataChanged(ihsSensorPack, ihsahrs3AxisStruct);
-			}
 		};
 
 		tts = new TextToSpeech(getApplicationContext(),
@@ -239,7 +233,10 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 			if (myCurrentLocation != null) {
 				if (nearbyTalkList != null) {
 					for (Talk talk : nearbyTalkList) {
-						final int round = Math.round(talk.place.getPosition().bearingTo(myCurrentLocation)) / 10 + 9;
+						int round = Math.round(talk.place.getPosition().bearingTo(myCurrentLocation)) / 10 + 9;
+						if (round < 0) {
+							round += 9;
+						}
 						txtBearing.setText(Integer.toString(round));
 						if (round == v) {
 							if (!talk.hasSpoken) {
@@ -491,7 +488,9 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 			final Place testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
 					marker.getPosition().longitude);
 			Talk talkObj = new Talk(tts, testData, handler);
-			talkObj.sayTitleAndDistance(myCurrentLocation);
+			if (talkObj.place.getTitle() != null) {
+				talkObj.sayTitleAndDistance(myCurrentLocation);
+			}
 		}
 		return false;
 	}

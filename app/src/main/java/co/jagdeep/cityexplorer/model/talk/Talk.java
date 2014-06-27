@@ -50,7 +50,7 @@ public class Talk {
 		} else if (distanceMeters >= 100 && distanceMeters < 1000) {
 			result += (Math.round(distanceMeters / 10d)) / 10 + "00 meters";
 		} else if (distanceMeters >= 1000) {
-			result += distanceMeters / 100 + " Kilometers";
+			result += distanceMeters / 1000 + " Kilometers";
 		} else {
 			result += distanceMeters + " meters";
 		}
