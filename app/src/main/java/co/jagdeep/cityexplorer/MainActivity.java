@@ -63,8 +63,8 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	//	private static final String API_KEY = "apikey=8rNAM8hxtPgpJaWCPofUNCWJ3VU2STdS";
 	private static final String API_KEY = "apikey=6400efb9c1d7e64df6407a6d58bd2f00";
 	private static final String HEADSET_KEY = "WvZlDar7pdT5sqFenYhnP/3RxO3b2GUeZrjz1KdKPOM=";
-	public static final double FAKE_LATITUDE = 38.8977;
-	public static final double FAKE_LONGITUDE = -77.0366;
+//	public static final double FAKE_LATITUDE = 38.8977;
+//	public static final double FAKE_LONGITUDE = -77.0366;
 	private GoogleMap mMap;
 	MapFragment mMapFragment;
 	private String currentCity = "";
@@ -151,7 +151,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	private TextView txtBearing;
 	private Talk[] talkArray;
 	private List<Talk> nearbyTalkList;
-	private Location fakeLocation;
+//	private Location fakeLocation;
 	private Handler handler;
 
 	List<Talk> getNearbyMarkers(Location location) {
@@ -179,9 +179,9 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		tvCheading = (TextView) findViewById(R.id.textCompass);
 		txtBearing = (TextView) findViewById(R.id.textBearing);
 
-		fakeLocation = new Location("");
-		fakeLocation.setLatitude(FAKE_LATITUDE);
-		fakeLocation.setLongitude(FAKE_LONGITUDE);
+//		fakeLocation = new Location("");
+//		fakeLocation.setLatitude(FAKE_LATITUDE);
+//		fakeLocation.setLongitude(FAKE_LONGITUDE);
 
 		handler = new Handler();
 
@@ -263,7 +263,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 				mMap.setOnMyLocationChangeListener(new GoogleMap.OnMyLocationChangeListener() {
 					@Override
 					public void onMyLocationChange(Location location) {
-						location.set(fakeLocation);
+//						location.set(fakeLocation);
 						myCurrentLocation = location;
 						LatLng myLocation = new LatLng(location.getLatitude(),
 								location.getLongitude());
