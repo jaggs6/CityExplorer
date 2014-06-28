@@ -1,4 +1,4 @@
-package co.jagdeep.cityexplorer.model.talk;
+package co.jagdeep.cityexplorer.talk;
 
 import android.location.Location;
 import android.media.AudioManager;
@@ -72,7 +72,7 @@ public class Talk {
 
 	private void speak(String say) {
 		if (!hasSpoken) {
-			tts.speak(say, TextToSpeech.QUEUE_ADD, null);
+			tts.speak(say, TextToSpeech.QUEUE_FLUSH, null);
 			hasSpoken = true;
 			handler.postDelayed(new Runnable() {
 				@Override

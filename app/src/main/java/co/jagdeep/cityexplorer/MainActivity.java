@@ -1,13 +1,8 @@
 package co.jagdeep.cityexplorer;
 
-import android.app.ActionBar;
 import android.app.Activity;
 import android.app.FragmentTransaction;
-import android.content.Context;
-import android.location.Address;
-import android.location.Geocoder;
 import android.location.Location;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.speech.tts.TextToSpeech;
@@ -15,15 +10,12 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.ArrayAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
-import co.jagdeep.cityexplorer.model.BlockLinks;
-import co.jagdeep.cityexplorer.model.Blocks;
-import co.jagdeep.cityexplorer.model.Categories;
-import co.jagdeep.cityexplorer.model.Category;
-import co.jagdeep.cityexplorer.model.talk.Place;
-import co.jagdeep.cityexplorer.model.talk.Talk;
+import co.jagdeep.cityexplorer.model.GeoName;
+import co.jagdeep.cityexplorer.model.GeoNames;
+import co.jagdeep.cityexplorer.talk.Place;
+import co.jagdeep.cityexplorer.talk.Talk;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.VolleyError;
@@ -46,25 +38,19 @@ import com.spothero.volley.JacksonNetwork;
 import com.spothero.volley.JacksonRequest;
 import com.spothero.volley.JacksonRequestListener;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 
-import static android.app.ActionBar.OnNavigationListener;
 import static com.gn.intelligentheadset.IHSDevice.IHSDeviceListener;
 
 
-public class MainActivity extends Activity implements OnNavigationListener, GoogleMap.OnMarkerClickListener {
+public class MainActivity extends Activity implements GoogleMap.OnMarkerClickListener {
 
-	private static final String STATE_SELECTED_NAVIGATION_ITEM = "selected_navigation_item";
 	private static final String TAG = "CityExplorerLog";
 	//	private static final String API_KEY = "apikey=8rNAM8hxtPgpJaWCPofUNCWJ3VU2STdS";
 	private static final String API_KEY = "apikey=6400efb9c1d7e64df6407a6d58bd2f00";
 	private static final String HEADSET_KEY = "WvZlDar7pdT5sqFenYhnP/3RxO3b2GUeZrjz1KdKPOM=";
-//	public static final double FAKE_LATITUDE = 38.8977;
-//	public static final double FAKE_LONGITUDE = -77.0366;
+	//	public static final double FAKE_LATITUDE = 38.8977;
+	//	public static final double FAKE_LONGITUDE = -77.0366;
 	private GoogleMap mMap;
 	MapFragment mMapFragment;
 	private String currentCity = "";
@@ -73,11 +59,8 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	//	int radius = 40000000;
 	//	private float previousZoomLevel = -1.0f;
 
-	String cities[] = {
-			"london", "barcelona", "berlin", "newyork", "paris", "prague", "rome", "venice", "washington"
-	};
-	List citiesList = Arrays.asList(cities);
-	private ActionBar actionBar;
+	private Map<Marker, GeoName> geoNameMap;
+
 	private MainActivity thisObj;
 	private String[] categoriesArray;
 	private View progressBar;
@@ -151,8 +134,9 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	private TextView txtBearing;
 	private Talk[] talkArray;
 	private List<Talk> nearbyTalkList;
-//	private Location fakeLocation;
+	//	private Location fakeLocation;
 	private Handler handler;
+	private boolean isAnimatedCamera = false;
 
 	List<Talk> getNearbyMarkers(Location location) {
 		List<Talk> talkList = new ArrayList<Talk>();
@@ -179,9 +163,9 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		tvCheading = (TextView) findViewById(R.id.textCompass);
 		txtBearing = (TextView) findViewById(R.id.textBearing);
 
-//		fakeLocation = new Location("");
-//		fakeLocation.setLatitude(FAKE_LATITUDE);
-//		fakeLocation.setLongitude(FAKE_LONGITUDE);
+		//		fakeLocation = new Location("");
+		//		fakeLocation.setLatitude(FAKE_LATITUDE);
+		//		fakeLocation.setLongitude(FAKE_LONGITUDE);
 
 		handler = new Handler();
 
@@ -221,8 +205,6 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 			fragmentTransaction.replace(R.id.container, mMapFragment);
 			fragmentTransaction.commit();
 		}
-
-		setupActionBar();
 	}
 
 	private void checkCompass(float v) {
@@ -252,6 +234,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	}
 
 	private void setUpMapIfNeeded() {
+		geoNameMap = new HashMap<Marker, GeoName>();
 		// Do a null check to confirm that we have not already instantiated the map.
 		if (mMap == null) {
 			mMap = mMapFragment.getMap();
@@ -263,14 +246,15 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 				mMap.setOnMyLocationChangeListener(new GoogleMap.OnMyLocationChangeListener() {
 					@Override
 					public void onMyLocationChange(Location location) {
-//						location.set(fakeLocation);
+						//						location.set(fakeLocation);
 						myCurrentLocation = location;
 						LatLng myLocation = new LatLng(location.getLatitude(),
 								location.getLongitude());
-						if (currentCity.isEmpty()) {
-							(new GetAddressTask(getApplicationContext())).execute(location);
+						getGeoNames();
+						if (!isAnimatedCamera) {
 							mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation,
 									15.0f));
+							isAnimatedCamera = !isAnimatedCamera;
 						}
 						if (myMarker == null) {
 							myMarker = mMap.addMarker(getMyMarkerOptions(myLocation));
@@ -288,23 +272,24 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 				.icon(BitmapDescriptorFactory.fromResource(R.drawable.cone2));
 	}
 
-	private void getPOI(String category) {
-		final String url = "https://api.pearson.com/eyewitness/" + currentCity + "/block.json?category=" + category +
-				"&tag=tg_info&" +
-				API_KEY;
+	private void getGeoNames() {
+
+
+		final String url = "http://ws.geonames.net/findNearbyWikipediaJSON?lat=" + myCurrentLocation
+				.getLatitude() + "&lng=" + myCurrentLocation.getLongitude() + "&username=wikimedia&lang="+Locale.getDefault().getLanguage();
 		Log.i(TAG, url);
 
-		mRequestQueue.add(new JacksonRequest<Blocks>(Request.Method.GET,
+		mRequestQueue.add(new JacksonRequest<GeoNames>(Request.Method.GET,
 						url,
-						new JacksonRequestListener<Blocks>() {
+						new JacksonRequestListener<GeoNames>() {
 							@Override
-							public void onResponse(Blocks response, int statusCode, VolleyError error) {
+							public void onResponse(GeoNames response, int statusCode, VolleyError error) {
 								if (response != null) {
 									mMap.clear();
 									if (myMarker != null) {
 										myMarker = mMap.addMarker(getMyMarkerOptions(myMarker.getPosition()));
 									}
-									responseToBlocksArray(response);
+									responseToGeoNamesArray(response);
 									hideProgress();
 								} else {
 									Log.e(TAG, "An error occurred while parsing the data! Stack trace follows:");
@@ -314,7 +299,7 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 
 							@Override
 							public JavaType getReturnType() {
-								return SimpleType.construct(Blocks.class);
+								return SimpleType.construct(GeoNames.class);
 							}
 						}
 				)
@@ -322,27 +307,26 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 
 	}
 
-	private void responseToBlocksArray(Blocks response) {
+	private void responseToGeoNamesArray(GeoNames response) {
 		List<Talk> talkList = new ArrayList<Talk>();
-		if (response.blocksList.blockLinks.length > 0) {
-			for (BlockLinks blockLink : response.blocksList.blockLinks) {
-				if (blockLink.latitude != null && blockLink.longitude != null && blockLink.title != null) {
+		if (response.geoNamesArray.length > 0) {
+			for (GeoName geoName : response.geoNamesArray) {
+				if (geoName.title != null) {
 
 					Location location = new Location("");
-					location.setLatitude(Double.parseDouble(blockLink.latitude));
-					location.setLongitude(Double.parseDouble(blockLink.longitude));
+					location.setLatitude(geoName.lat);
+					location.setLongitude(geoName.lng);
 
-					Talk talk = new Talk(tts, makeBlock(blockLink.title, location.getLatitude(),
-							location.getLongitude()), handler
-					);
+					Talk talk = new Talk(tts, makePlace(geoName), handler);
 					talkList.add(talk);
 
 					Marker marker = mMap.addMarker(new MarkerOptions()
-									.position(new LatLng(Double.parseDouble(blockLink.latitude),
-											Double.parseDouble(blockLink.longitude)))
-									.title(blockLink.title)
-									.snippet(talk.findDistance(myCurrentLocation))
+									.position(new LatLng(geoName.lat, geoName.lng))
+									.title(geoName.title)
+									.snippet(geoName.summary)
 					);
+
+					geoNameMap.put(marker, geoName);
 
 					talk.place.setMarker(marker);
 				}
@@ -361,58 +345,6 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		progressBar.setVisibility(View.GONE);
 	}
 
-	private void responseToCategoriesArray(Categories response) {
-		List<String> categories = new ArrayList<String>(response.categoriesContent.categoriesArray
-				.length);
-		for (Category category : response.categoriesContent.categoriesArray) {
-			categories.add(category.category.replace("_", " "));
-		}
-		categoriesArray = new String[categories.size()];
-		categoriesArray = categories.toArray(categoriesArray);
-	}
-
-	private void getCategories() {
-		mRequestQueue.add(new JacksonRequest<Categories>(Request.Method.GET,
-						"https://api.pearson.com/eyewitness/" + currentCity + "/categories.json" + "?" + API_KEY,
-						new JacksonRequestListener<Categories>() {
-							@Override
-							public void onResponse(Categories response, int statusCode, VolleyError error) {
-								if (response != null) {
-									responseToCategoriesArray(response);
-									setCategoriesIntoActionBar();
-									hideProgress();
-								} else {
-									Log.e(TAG, "An error occurred while parsing the data! Stack trace follows:");
-									error.printStackTrace();
-								}
-							}
-
-							@Override
-							public JavaType getReturnType() {
-								return SimpleType.construct(Categories.class);
-							}
-						}
-				)
-		);
-	}
-
-	private void setCategoriesIntoActionBar() {
-		actionBar.setDisplayShowTitleEnabled(false);
-		actionBar.setNavigationMode(ActionBar.NAVIGATION_MODE_LIST);
-		actionBar.setListNavigationCallbacks(
-				new ArrayAdapter<String>(
-						actionBar.getThemedContext(),
-						android.R.layout.simple_list_item_1,
-						android.R.id.text1, categoriesArray
-				),
-				thisObj
-		);
-	}
-
-	private void setupActionBar() {
-		actionBar = getActionBar();
-	}
-
 	@Override
 	protected void onResume() {
 		super.onResume();
@@ -423,21 +355,6 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		}
 
 	}
-
-	@Override
-	public void onRestoreInstanceState(Bundle savedInstanceState) {
-		if (savedInstanceState.containsKey(STATE_SELECTED_NAVIGATION_ITEM)) {
-			getActionBar().setSelectedNavigationItem(
-					savedInstanceState.getInt(STATE_SELECTED_NAVIGATION_ITEM));
-		}
-	}
-
-	@Override
-	public void onSaveInstanceState(Bundle outState) {
-		outState.putInt(STATE_SELECTED_NAVIGATION_ITEM,
-				getActionBar().getSelectedNavigationIndex());
-	}
-
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
@@ -455,23 +372,14 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 		return super.onOptionsItemSelected(item);
 	}
 
-	@Override
-	public boolean onNavigationItemSelected(int position, long id) {
-		// When the given dropdown item is selected, show its contents in the
-		// container view.
-		Log.i(TAG, Integer.toString(position));
-		showProgress();
-		getPOI(categoriesArray[position].replace(" ", "_"));
-		return true;
-	}
-
-	private Place makeBlock(String title, double lat, double longi) {
+	private Place makePlace(GeoName geoName) {
 		Place samplePlace = new Place();
-		samplePlace.setTitle(title);
+		samplePlace.setTitle(geoName.title);
 		Location testLocation = new Location("");
-		testLocation.setLatitude(lat);
-		testLocation.setLongitude(longi);
+		testLocation.setLatitude(geoName.lat);
+		testLocation.setLongitude(geoName.lng);
 		samplePlace.setPosition(testLocation);
+		samplePlace.setShortDescription(geoName.summary);
 		//		samplePlace.setShortDescription("The Sydney Opera House is a multi-venue performing arts centre in
 		// Sydney");
 		//		samplePlace.setLongDescription("The Opera House’s magnificent harbourside location,
@@ -485,11 +393,10 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	@Override
 	public boolean onMarkerClick(Marker marker) {
 		if (marker != myMarker) {
-			final Place testData = makeBlock(marker.getTitle(), marker.getPosition().latitude,
-					marker.getPosition().longitude);
+			final Place testData = makePlace(geoNameMap.get(marker));
 			Talk talkObj = new Talk(tts, testData, handler);
 			if (talkObj.place.getTitle() != null) {
-				talkObj.sayTitleAndDistance(myCurrentLocation);
+				talkObj.sayShortDescription();
 			}
 		}
 		return false;
@@ -522,81 +429,4 @@ public class MainActivity extends Activity implements OnNavigationListener, Goog
 	//		previousZoomLevel = position.zoom;
 	//	}
 
-	private class GetAddressTask extends
-			AsyncTask<Location, Void, String> {
-		Context mContext;
-
-		public GetAddressTask(Context context) {
-			super();
-			mContext = context;
-		}
-
-		/**
-		 * Get a Geocoder instance, get the latitude and longitude
-		 * look up the address, and return it
-		 *
-		 * @return A string containing the address of the current
-		 * location, or an empty string if no address can be found,
-		 * or an error message
-		 * @params params One or more Location objects
-		 */
-		@Override
-		protected String doInBackground(Location... params) {
-			Geocoder geocoder =
-					new Geocoder(mContext, Locale.getDefault());
-			// Get the current location from the input parameter list
-			Location loc = params[0];
-			// Create a list to contain the result address
-			List<Address> addresses = null;
-			try {
-				/*
-				 * Return 1 address.
-                 */
-				addresses = geocoder.getFromLocation(loc.getLatitude(),
-						loc.getLongitude(), 1);
-			} catch (IOException e1) {
-				Log.e("LocationSampleActivity",
-						"IO Exception in getFromLocation()");
-				e1.printStackTrace();
-				return ("IO Exception trying to get address");
-			} catch (IllegalArgumentException e2) {
-				// Error message to post in the log
-				String errorString = "Illegal arguments " +
-						Double.toString(loc.getLatitude()) +
-						" , " +
-						Double.toString(loc.getLongitude()) +
-						" passed to address service";
-				Log.e("LocationSampleActivity", errorString);
-				e2.printStackTrace();
-				return errorString;
-			}
-			// If the reverse geocode returned an address
-			if (addresses != null && addresses.size() > 0) {
-				// Get the first address
-				Address address = addresses.get(0);
-
-				// Return the text
-				return address.getLocality();
-			} else {
-				return "";
-			}
-		}
-
-		@Override
-		protected void onPostExecute(String address) {
-			super.onPostExecute(address);
-			if (address != null) {
-				currentCity = address.replace(" ", "").toLowerCase().trim();
-				if (citiesList.contains(currentCity)) {
-					Toast.makeText(getApplicationContext(), address + " is supported",
-							Toast.LENGTH_LONG).show();
-					showProgress();
-					getCategories();
-				} else {
-					Toast.makeText(getApplicationContext(), "Sorry " + address + " is not supported yet",
-							Toast.LENGTH_LONG).show();
-				}
-			}
-		}
-	}
 }

@@ -1,4 +1,4 @@
-package co.jagdeep.cityexplorer.model.talk;
+package co.jagdeep.cityexplorer.talk;
 
 import android.location.Location;
 import com.google.android.gms.maps.model.Marker;
